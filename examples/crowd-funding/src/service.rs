@@ -30,13 +30,13 @@ impl WithServiceAbi for CrowdFundingService {
 impl Service for CrowdFundingService {
     type Parameters = ApplicationId<fungible::FungibleTokenAbi>;
 
-    async fn new(runtime: ServiceRuntime<Self>) -> Self {
+    async fn new(runtime: ServiceRuntime<Self>) -> Result<Self, anyhow::Error> {
         let state = CrowdFundingState::load(runtime.root_view_storage_context())
             .await
-            .expect("Failed to load state");
-        CrowdFundingService {
+            .map_err(|err| anyhow::anyhow!("Failed to load state: {}", err))?;
+        Ok(CrowdFundingService {
             state: Arc::new(state),
-        }
+        })
     }
 
     async fn handle_query(&self, request: Request) -> Response {
