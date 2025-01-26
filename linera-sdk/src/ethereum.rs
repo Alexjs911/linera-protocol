@@ -20,8 +20,9 @@ use crate::contract::wit::contract_system_api;
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct EthereumClient {
     /// The URL of the JSON-RPC server, without the method or parameters.
-    pub url: String,
+    url: String,
 }
+
 scalar!(EthereumClient);
 
 impl EthereumClient {
@@ -40,11 +41,7 @@ impl JsonRpcClient for EthereumClient {
     }
 
     async fn request_inner(&self, payload: Vec<u8>) -> Result<Vec<u8>, Self::Error> {
-        let content_type = "application/json";
-        Ok(contract_system_api::http_post(
-            &self.url,
-            content_type,
-            &payload,
-        ))
+        contract_system_api::http_post(&self.url, "application/json", &payload)
+            .map_err(|err| EthereumServiceError::from(err))
     }
 }
