@@ -28,27 +28,9 @@ impl PerformanceSummary {
             .filter(|workflow| tracked_workflows.contains(&workflow.name))
             .collect::<Vec<_>>();
 
-        let base_jobs = Box::pin(github.latest_jobs(
-            github.context().base_branch(),
-            "push",
-            &workflows_handler,
-            &workflows,
-        ))
-        .await?;
-        if base_jobs.is_empty() {
-            bail!("No base jobs found!");
-        }
-
-        let pr_jobs = Box::pin(github.latest_jobs(
-            github.context().pr_branch(),
-            "pull_request",
-            &workflows_handler,
-            &workflows,
-        ))
-        .await?;
-        if pr_jobs.is_empty() {
-            bail!("No PR jobs found!");
-        }
+        let (base_jobs, pr_jobs) = github
+            .get_base_and_pr_jobs(&workflows_handler, &workflows)
+            .await?;
 
         Ok(Self {
             github,
@@ -74,15 +56,12 @@ impl PerformanceSummary {
         markdown_content.push_str("### CI Runtime Comparison\n\n");
         for (workflow_name, comparisons) in self.ci_runtime_comparison.0.iter() {
             markdown_content.push_str(&format!("#### Workflow: {}\n\n", workflow_name));
-            markdown_content
-                .push_str("| Job Name | Base Runtime | PR Runtime | Runtime Difference (%) |\n");
-            markdown_content.push_str("| --- | --- | --- | --- |\n");
+            markdown_content.push_str("| Job Name | Base Runtime | PR Runtime | Runtime Difference (%) |\n");
+            markdown_content.push_str("|---|---|---|---|");
 
             for comparison in comparisons {
-                let base_runtime =
-                    format_duration(Duration::from_secs(comparison.base_runtime())).to_string();
-                let pr_runtime =
-                    format_duration(Duration::from_secs(comparison.pr_runtime())).to_string();
+                let base_runtime = format_duration(Duration::from_secs(comparison.base_runtime())).to_string();
+                let pr_runtime = format_duration(Duration::from_secs(comparison.pr_runtime())).to_string();
                 let runtime_difference_pct = format!("{:.2}%", comparison.runtime_difference_pct());
 
                 markdown_content.push_str(&format!(
@@ -93,16 +72,37 @@ impl PerformanceSummary {
                     runtime_difference_pct
                 ));
             }
-
             markdown_content.push('\n');
         }
+
         markdown_content
     }
 
-    // Updates an existing comment or creates a new one in the PR.
     pub async fn upsert_pr_comment(&self) -> Result<()> {
-        self.github
-            .upsert_pr_comment(self.format_comment_body())
-            .await
+        self.github.upsert_pr_comment(self.format_comment_body()).await
+    }
+
+    async fn get_base_and_pr_jobs(
+        &self,
+        workflows_handler: &github::WorkflowsHandler,
+        workflows: &[github::Workflow],
+    ) -> Result<(Vec<github::Job>, Vec<github::Job>)> {
+        let base_jobs = self
+            .github
+            .latest_jobs(self.github.context().base_branch(), "push", workflows_handler, workflows)
+            .await?;
+        if base_jobs.is_empty() {
+            bail!("No base jobs found!");
+        }
+
+        let pr_jobs = self
+            .github
+            .latest_jobs(self.github.context().pr_branch(), "pull_request", workflows_handler, workflows)
+            .await?;
+        if pr_jobs.is_empty() {
+            bail!("No PR jobs found!");
+        }
+
+        Ok((base_jobs, pr_jobs))
     }
 }
